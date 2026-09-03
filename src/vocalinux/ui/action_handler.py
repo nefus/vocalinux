@@ -48,6 +48,7 @@ class ActionHandler:
         # Build action dispatch table: custom handlers + shortcut-based actions
         self.action_handlers: dict[str, Callable[[], bool]] = {
             "delete_last": self._handle_delete_last,
+            "submit": self._handle_submit,
         }
         for action, shortcut in self._SHORTCUT_ACTIONS.items():
             self.action_handlers[action] = self._make_shortcut_handler(shortcut)
@@ -108,3 +109,11 @@ class ActionHandler:
             self.last_injected_text = ""
 
         return success
+
+    def _handle_submit(self) -> bool:
+        """Handle 'submit' command by sending a real Return/Enter key event.
+
+        Injecting a literal "\\n" as text is unreliable across backends (see
+        _handle_delete_last), so this sends an actual key event instead.
+        """
+        return self.text_injector.press_enter()

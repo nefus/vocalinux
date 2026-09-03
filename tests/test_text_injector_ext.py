@@ -1056,6 +1056,70 @@ class TestPressBackspace(unittest.TestCase):
         mock_run.assert_not_called()
 
 
+class TestPressEnter(unittest.TestCase):
+    def test_wtype_sends_return_key(self):
+        obj = _make_backspace_injector("WAYLAND", tool="wtype")
+        with patch("subprocess.run") as mock_run:
+            self.assertTrue(obj.press_enter())
+        self.assertEqual(mock_run.call_args[0][0], ["wtype", "-k", "Return"])
+
+    def test_ydotool_v1_uses_keycode_28(self):
+        obj = _make_backspace_injector("WAYLAND", tool="ydotool", legacy=False)
+        with patch.dict(os.environ, {"VOCALINUX_YDOTOOL_KEY_DELAY": "2"}):
+            with patch("subprocess.run") as mock_run:
+                self.assertTrue(obj.press_enter())
+        self.assertEqual(
+            mock_run.call_args[0][0],
+            ["ydotool", "key", "--key-delay", "2", "28:1", "28:0"],
+        )
+
+    def test_ydotool_legacy_uses_named_enter(self):
+        obj = _make_backspace_injector("WAYLAND", tool="ydotool", legacy=True)
+        with patch("subprocess.run") as mock_run:
+            self.assertTrue(obj.press_enter())
+        self.assertEqual(mock_run.call_args[0][0], ["ydotool", "key", "enter"])
+
+    def test_x11_uses_xdotool_return(self):
+        obj = _make_backspace_injector("X11")
+        with patch("subprocess.run") as mock_run:
+            self.assertTrue(obj.press_enter())
+        self.assertEqual(
+            mock_run.call_args[0][0],
+            ["xdotool", "key", "--clearmodifiers", "Return"],
+        )
+        kwargs = mock_run.call_args[1]
+        self.assertIn("env", kwargs)
+
+    def test_wayland_ibus_falls_back_to_virtual_keyboard(self):
+        """IBus cannot send key events, so submit must use wtype/ydotool."""
+        obj = _make_backspace_injector("WAYLAND_IBUS")
+        which = lambda c: "/usr/bin/wtype" if c == "wtype" else None  # noqa: E731
+        with patch("subprocess.run") as mock_run:
+            with patch("shutil.which", side_effect=which):
+                self.assertTrue(obj.press_enter())
+        self.assertEqual(mock_run.call_args[0][0], ["wtype", "-k", "Return"])
+
+    def test_no_tool_available_returns_false(self):
+        obj = _make_backspace_injector("WAYLAND_IBUS")
+        with patch("subprocess.run") as mock_run:
+            with patch("shutil.which", return_value=None):
+                self.assertFalse(obj.press_enter())
+        mock_run.assert_not_called()
+
+    def test_timeout_returns_false_rather_than_raising(self):
+        obj = _make_backspace_injector("WAYLAND", tool="wtype")
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("wtype", 3)):
+            self.assertFalse(obj.press_enter())
+
+    def test_waits_for_modifiers_before_resolving_the_tool(self):
+        obj = _make_backspace_injector("WAYLAND", tool="wtype")
+        order = []
+        obj._wait_for_modifiers_released = MagicMock(side_effect=lambda: order.append("wait"))
+        with patch("subprocess.run", side_effect=lambda *a, **k: order.append("run")):
+            self.assertTrue(obj.press_enter())
+        self.assertEqual(order, ["wait", "run"])
+
+
 class TestCopyToClipboard(unittest.TestCase):
     def test_copy_success(self):
         from vocalinux.text_injection.text_injector import DesktopEnvironment

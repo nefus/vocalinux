@@ -16,6 +16,7 @@ class TestActionHandler(unittest.TestCase):
         self.mock_text_injector = MagicMock()
         self.mock_text_injector.inject_text.return_value = True
         self.mock_text_injector._inject_keyboard_shortcut.return_value = True
+        self.mock_text_injector.press_enter.return_value = True
 
         self.handler = ActionHandler(self.mock_text_injector)
 
@@ -30,6 +31,7 @@ class TestActionHandler(unittest.TestCase):
         self.assertIn("cut", self.handler.action_handlers)
         self.assertIn("copy", self.handler.action_handlers)
         self.assertIn("paste", self.handler.action_handlers)
+        self.assertIn("submit", self.handler.action_handlers)
 
     def test_set_last_injected_text(self):
         """Test setting last injected text."""
@@ -139,3 +141,20 @@ class TestActionHandler(unittest.TestCase):
         self.assertFalse(result)
         # Text should not be cleared on failure
         self.assertEqual(self.handler.last_injected_text, "test")
+
+    def test_handle_submit(self):
+        """Test submit action sends a real Return key event."""
+        result = self.handler.handle_action("submit")
+
+        self.assertTrue(result)
+        self.mock_text_injector.press_enter.assert_called_once_with()
+        self.mock_text_injector.inject_text.assert_not_called()
+        self.mock_text_injector._inject_keyboard_shortcut.assert_not_called()
+
+    def test_handle_submit_failure(self):
+        """Test submit action when the Return key press fails."""
+        self.mock_text_injector.press_enter.return_value = False
+
+        result = self.handler.handle_action("submit")
+
+        self.assertFalse(result)

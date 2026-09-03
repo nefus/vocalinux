@@ -2086,6 +2086,91 @@ class TextInjector:
         except (TypeError, ValueError):
             return 0.012
 
+    def press_enter(self) -> bool:
+        """Send a real Return/Enter key event.
+
+        Like backspace, this cannot be done by injecting a literal ``\\n``
+        character through the text-typing path: ydotool's ``type`` treats it
+        as a line break in its own buffering rather than a key event, and
+        IBus ``commit_text()`` would just commit a control character instead
+        of submitting the focused input. Only an actual key event works
+        reliably across terminals, browsers and chat inputs.
+
+        Returns:
+            True if the press was delivered, False otherwise.
+        """
+        logger.debug("Sending Return key event")
+
+        if (
+            self.environment == DesktopEnvironment.X11
+            or self.environment == DesktopEnvironment.WAYLAND_XDOTOOL
+            or self.environment == DesktopEnvironment.X11_IBUS
+        ):
+            env = os.environ.copy()
+            if self.environment == DesktopEnvironment.WAYLAND_XDOTOOL:
+                env["GDK_BACKEND"] = "x11"
+                env["QT_QPA_PLATFORM"] = "xcb"
+                if not env.get("DISPLAY"):
+                    env["DISPLAY"] = ":0"
+            try:
+                subprocess.run(
+                    ["xdotool", "key", "--clearmodifiers", "Return"],
+                    env=host_env(env),
+                    check=True,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=3,
+                )
+                return True
+            except (
+                subprocess.CalledProcessError,
+                subprocess.TimeoutExpired,
+                FileNotFoundError,
+            ) as e:
+                logger.error(f"xdotool Return error: {e}")
+                return False
+
+        # Wayland (including WAYLAND_IBUS -- IBus cannot send key events).
+        self._wait_for_modifiers_released()
+        tool = self._resolve_wayland_key_tool()
+        if not tool:
+            logger.error("No virtual-keyboard tool available to send Return")
+            return False
+
+        if tool == "ydotool" and not self._ensure_ydotoold():
+            logger.warning("ydotoold not ready before Return injection")
+
+        if tool == "wtype":
+            cmd = ["wtype", "-k", "Return"]
+        elif self._ydotool_uses_legacy_named_keys():
+            token = self._ydotool_legacy_token([], "enter")
+            if token is None:
+                logger.error("ydotool 0.1.x has no legacy spelling for Return")
+                return False
+            cmd = ["ydotool", "key", token]
+        else:
+            code = self._KEYCODES["return"]
+            delay = os.environ.get("VOCALINUX_YDOTOOL_KEY_DELAY", "2")
+            cmd = ["ydotool", "key", "--key-delay", delay, f"{code}:1", f"{code}:0"]
+
+        try:
+            subprocess.run(
+                cmd,
+                check=True,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=3,
+                env=host_env(),
+            )
+            return True
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+        ) as e:
+            logger.error(f"{tool} Return error: {e}")
+            return False
+
     def _log_current_window_info(self):
         """Log information about the current window/application for debugging."""
         try:

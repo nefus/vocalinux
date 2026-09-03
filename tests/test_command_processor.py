@@ -343,3 +343,14 @@ class TestCommandProcessorFallback(unittest.TestCase):
         """Test paste action through generic path."""
         result, actions = self.processor.process_text("paste content")
         self.assertIn("paste", actions)
+
+    def test_generic_submit_action(self):
+        """Test submit action through generic path."""
+        result, actions = self.processor.process_text("submit")
+        self.assertIn("submit", actions)
+        self.assertEqual(result, "")
+
+    def test_generic_submit_action_with_preceding_text(self):
+        """Test submit action after dictated text through generic path."""
+        result, actions = self.processor.process_text("what time is it submit")
+        self.assertIn("submit", actions)

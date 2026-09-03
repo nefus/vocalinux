@@ -61,6 +61,7 @@ class CommandProcessor:
             "cut": "cut",
             "copy": "copy",
             "paste": "paste",
+            "submit": "submit",
         }
 
         # Formatting commands that modify the next word
